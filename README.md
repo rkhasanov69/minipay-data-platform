@@ -47,3 +47,22 @@
 
     groups
     docker run hello-world
+
+## PostgreSQL (docker-compose)
+
+`compose.yaml` поднимает PostgreSQL для OLTP-источника данных MiniPay.
+
+### Перед первым запуском на новой машине
+
+`.env` в git не входит (см. `.gitignore`) — создай его вручную рядом с `compose.yaml`:
+
+    POSTGRES_PASSWORD=<свой пароль>
+
+### Запуск
+
+    docker compose up -d
+    docker compose ps
+
+### Проверка
+
+    docker compose exec postgres-oltp psql -U minipay -d minipay_oltp

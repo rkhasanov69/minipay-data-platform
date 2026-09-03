@@ -1,0 +1,14 @@
+services:
+  postgres-oltp:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: minipay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: minipay_oltp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-oltp-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-oltp-data:
