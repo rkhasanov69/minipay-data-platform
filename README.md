@@ -66,3 +66,20 @@
 ### Проверка
 
     docker compose exec postgres-oltp psql -U minipay -d minipay_oltp
+
+
+## OLTP-схема (PostgreSQL)
+
+DDL-скрипты для схемы `minipay_oltp` лежат в папке `sql/`, пронумерованы в порядке применения:
+
+- `sql/01_oltp_schema.sql` — основные таблицы: `users`, `merchants`, `cards`, `transactions`.
+- `sql/02_transaction_status_history.sql` — журнал изменений статуса транзакции.
+
+Применяются на уже поднятом контейнере с Postgres (см. раздел выше), по порядку номеров файлов:
+
+```bash
+cat sql/01_oltp_schema.sql | docker compose exec -T postgres-oltp psql -U minipay -d minipay_oltp
+cat sql/02_transaction_status_history.sql | docker compose exec -T postgres-oltp psql -U minipay -d minipay_oltp
+```
+
+Скрипты безопасно перезапускать повторно (используют `CREATE TABLE IF NOT EXISTS` и обёрнуты в транзакцию `BEGIN`/`COMMIT`). При появлении новых таблиц в будущем достаточно будет применить только новые файлы с большим номером.
