@@ -83,3 +83,20 @@ cat sql/02_transaction_status_history.sql | docker compose exec -T postgres-oltp
 ```
 
 Скрипты безопасно перезапускать повторно (используют `CREATE TABLE IF NOT EXISTS` и обёрнуты в транзакцию `BEGIN`/`COMMIT`). При появлении новых таблиц в будущем достаточно будет применить только новые файлы с большим номером.
+
+
+## Тестовые данные (Python)
+`scripts/generate_test_data.py` наполняет таблицу `users` правдоподобными тестовыми
+данными (`Faker`, локаль `uz_UZ`): имя и фамилия согласованы по полу, телефон в
+формате `998XXXXXXXXX`, город — из списка крупных городов Узбекистана, статус — с
+реалистичным распределением (90% `active`, остальное — редкие исключения).
+### Перед первым запуском на новой машине
+Нужно Python-окружение (venv) с зависимостями из `requirements.txt`.
+`scripts/setup-python-env.sh` создаёт `venv/` (если его ещё нет) и ставит туда пакеты:
+    chmod +x scripts/setup-python-env.sh
+    ./scripts/setup-python-env.sh
+`.env` с `POSTGRES_PASSWORD` должен уже существовать (см. раздел PostgreSQL выше) —
+скрипт-генератор использует его для подключения к базе.
+### Запуск
+    source venv/bin/activate
+    python3 scripts/generate_test_data.py
