@@ -86,17 +86,28 @@ cat sql/02_transaction_status_history.sql | docker compose exec -T postgres-oltp
 
 
 ## Тестовые данные (Python)
-`scripts/generate_test_data.py` наполняет таблицу `users` правдоподобными тестовыми
-данными (`Faker`, локаль `uz_UZ`): имя и фамилия согласованы по полу, телефон в
-формате `998XXXXXXXXX`, город — из списка крупных городов Узбекистана, статус — с
-реалистичным распределением (90% `active`, остальное — редкие исключения).
+
+Генерация тестовых данных для MiniPay разбита на несколько скриптов в `scripts/`:
+
+- `scripts/seed_merchants.py` — одноразовый сид справочника мерчантов (курируемый список реальных узбекских брендов). Запускается вручную, когда нужно докинуть мерчантов — не входит в регулярный прогон.
+- `scripts/generate_test_data.py` — регулярная генерация: `users` (Faker, локаль `uz_UZ`, имя/фамилия согласованы по полу, телефон в формате `998XXXXXXXXX`, город — из списка крупных городов Узбекистана, статус — 90% `active`) и `cards` (1-3 карты на каждого пользователя, тип карты и статус — с реалистичными весами).
+- `scripts/generate_transactions.py` — независимая генерация `transactions` поверх уже существующих активных карт и мерчантов (сам ничего не создаёт в `users`/`cards`/`merchants`, только читает их id).
+
 ### Перед первым запуском на новой машине
+
 Нужно Python-окружение (venv) с зависимостями из `requirements.txt`.
-`scripts/setup-python-env.sh` создаёт `venv/` (если его ещё нет) и ставит туда пакеты:
+`scripts/setup-python-env.sh` идемпотентен: ставит системный пакет `python3.12-venv`, если его ещё нет, создаёт `venv/` (если его ещё нет), ставит зависимости, и добавляет alias `activate-mp` в `~/.bashrc` (если его там ещё нет) — быстрая активация venv из любого места одной командой.
+
     chmod +x scripts/setup-python-env.sh
     ./scripts/setup-python-env.sh
-`.env` с `POSTGRES_PASSWORD` должен уже существовать (см. раздел PostgreSQL выше) —
-скрипт-генератор использует его для подключения к базе.
+
+После первого запуска скрипта на машине — один раз выполни `source ~/.bashrc` (или открой новый терминал), чтобы текущий шелл подхватил новый alias. Дальше на этой машине `activate-mp` работает сразу в любом новом терминале, без дополнительных действий.
+
+`.env` с `POSTGRES_PASSWORD` должен уже существовать (см. раздел PostgreSQL выше) — все генераторы используют его для подключения к базе.
+
 ### Запуск
-    source venv/bin/activate
-    python3 scripts/generate_test_data.py
+
+    activate-mp
+    python3 scripts/seed_merchants.py       # один раз, при необходимости
+    python3 scripts/generate_test_data.py   # users + cards
+    python3 scripts/generate_transactions.py
