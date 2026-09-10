@@ -67,12 +67,15 @@ transactions = []
 for _ in range(100):
     transactions.append(generate_transaction(active_card_ids, active_merchant_ids))
 
+history_count = 0
+
 for tx in transactions:
     cur.execute(
         """
         INSERT INTO transactions
             (sender_card_id, receiver_card_id, merchant_id, amount, currency, operation_type, channel, status)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (
             tx["sender_card_id"],
@@ -85,9 +88,29 @@ for tx in transactions:
             tx["status"],
         ),
     )
+    transaction_id = cur.fetchone()[0]
+
+    cur.execute(
+        """
+        INSERT INTO transaction_status_history (transaction_id, status)
+        VALUES (%s, %s)
+        """,
+        (transaction_id, "pending"),
+    )
+    history_count += 1
+
+    if tx["status"] != "pending":
+        cur.execute(
+            """
+            INSERT INTO transaction_status_history (transaction_id, status)
+            VALUES (%s, %s)
+            """,
+            (transaction_id, tx["status"]),
+        )
+        history_count += 1
 
 conn.commit()
-print(f"Inserted {len(transactions)} transactions")
+print(f"Inserted {len(transactions)} transactions and {history_count} status history rows")
 
 cur.close()
 conn.close()
