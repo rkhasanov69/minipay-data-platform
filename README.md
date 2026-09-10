@@ -74,12 +74,16 @@ DDL-скрипты для схемы `minipay_oltp` лежат в папке `sq
 
 - `sql/01_oltp_schema.sql` — основные таблицы: `users`, `merchants`, `cards`, `transactions`.
 - `sql/02_transaction_status_history.sql` — журнал изменений статуса транзакции.
+- `sql/03_backfill_transaction_status_history.sql` — идемпотентный бэкфилл: досоздаёт записи в журнале статусов для транзакций, у которых их ещё нет (например, вставленных до появления этой логики в генераторе).
+
+
 
 Применяются на уже поднятом контейнере с Postgres (см. раздел выше), по порядку номеров файлов:
 
 ```bash
 cat sql/01_oltp_schema.sql | docker compose exec -T postgres-oltp psql -U minipay -d minipay_oltp
 cat sql/02_transaction_status_history.sql | docker compose exec -T postgres-oltp psql -U minipay -d minipay_oltp
+cat sql/03_backfill_transaction_status_history.sql | docker compose exec -T postgres-oltp psql -U minipay -d minipay_oltp
 ```
 
 Скрипты безопасно перезапускать повторно (используют `CREATE TABLE IF NOT EXISTS` и обёрнуты в транзакцию `BEGIN`/`COMMIT`). При появлении новых таблиц в будущем достаточно будет применить только новые файлы с большим номером.
@@ -91,8 +95,7 @@ cat sql/02_transaction_status_history.sql | docker compose exec -T postgres-oltp
 
 - `scripts/seed_merchants.py` — одноразовый сид справочника мерчантов (курируемый список реальных узбекских брендов). Запускается вручную, когда нужно докинуть мерчантов — не входит в регулярный прогон.
 - `scripts/generate_test_data.py` — регулярная генерация: `users` (Faker, локаль `uz_UZ`, имя/фамилия согласованы по полу, телефон в формате `998XXXXXXXXX`, город — из списка крупных городов Узбекистана, статус — 90% `active`) и `cards` (1-3 карты на каждого пользователя, тип карты и статус — с реалистичными весами).
-- `scripts/generate_transactions.py` — независимая генерация `transactions` поверх уже существующих активных карт и мерчантов (сам ничего не создаёт в `users`/`cards`/`merchants`, только читает их id).
-
+- `scripts/generate_transactions.py` — независимая генерация `transactions` поверх уже существующих активных карт и мерчантов (сам ничего не создаёт в `users`/`cards`/`merchants`, только читает их id), плюс сразу пишет соответствующую историю в `transaction_status_history` (каждая транзакция стартует с `pending`, и если финальный статус другой — добавляется вторая запись).
 ### Перед первым запуском на новой машине
 
 Нужно Python-окружение (venv) с зависимостями из `requirements.txt`.
