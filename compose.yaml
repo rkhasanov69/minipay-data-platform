@@ -10,5 +10,17 @@ services:
     volumes:
       - postgres-oltp-data:/var/lib/postgresql/data
 
+  postgres-dwh:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: minipay
+      POSTGRES_PASSWORD: ${DWH_POSTGRES_PASSWORD}
+      POSTGRES_DB: minipay_dwh
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-dwh-data:/var/lib/postgresql/data
+
 volumes:
   postgres-oltp-data:
+  postgres-dwh-data:
