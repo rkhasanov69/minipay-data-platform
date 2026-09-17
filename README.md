@@ -132,3 +132,10 @@ cat sql/04_dwh_raw_schema.sql | docker compose exec -T postgres-dwh psql -U mini
 \`\`\`
 docker compose exec postgres-dwh psql -U minipay -d minipay_dwh -c "\dt raw.*"
 \`\`\`
+
+Extract-Load: копирование данных из OLTP в raw (полная перезагрузка — таблицы очищаются через `TRUNCATE` и заполняются заново при каждом запуске):
+
+\`\`\`
+python scripts/load_raw.py
+\`\`\`
+
