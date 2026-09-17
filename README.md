@@ -113,3 +113,22 @@ cat sql/03_backfill_transaction_status_history.sql | docker compose exec -T post
     python3 scripts/seed_merchants.py       # один раз, при необходимости
     python3 scripts/generate_test_data.py   # users + cards
     python3 scripts/generate_transactions.py
+
+
+## DWH и raw-слой (PostgreSQL)
+
+Для аналитики поднят отдельный контейнер `postgres-dwh` (база `minipay_dwh`, порт `5433`), физически отделённый от продакшн-базы `minipay_oltp` — тяжёлые аналитические запросы не должны нагружать OLTP.
+
+Первый слой хранилища — `raw`: точная копия таблиц источника (`users`, `cards`, `merchants`, `transactions`, `transaction_status_history`), без бизнес-ограничений (`CHECK`, `UNIQUE`, `FOREIGN KEY`) — только структура и типы данных. Задача raw-слоя — зафиксировать данные "как есть", без интерпретации; проверки бизнес-логики переезжают на слой трансформаций (dbt).
+
+Применить схему:
+
+\`\`\`
+cat sql/04_dwh_raw_schema.sql | docker compose exec -T postgres-dwh psql -U minipay -d minipay_dwh
+\`\`\`
+
+Проверить результат:
+
+\`\`\`
+docker compose exec postgres-dwh psql -U minipay -d minipay_dwh -c "\dt raw.*"
+\`\`\`
