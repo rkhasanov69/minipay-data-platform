@@ -133,9 +133,16 @@ cat sql/04_dwh_raw_schema.sql | docker compose exec -T postgres-dwh psql -U mini
 docker compose exec postgres-dwh psql -U minipay -d minipay_dwh -c "\dt raw.*"
 \`\`\`
 
-Extract-Load: копирование данных из OLTP в raw (полная перезагрузка — таблицы очищаются через `TRUNCATE` и заполняются заново при каждом запуске):
+Extract-Load: копирование данных из OLTP в raw. Загрузка инкрементальная — точка отсчёта на каждую таблицу хранится в служебной таблице `raw.load_log` (по `updated_at` для `users`/`cards`/`merchants`/`transactions`, по `id` для append-only `transaction_status_history`). При каждом запуске скрипт забирает из OLTP только новые/изменившиеся строки, удаляет их прежние версии из raw (`DELETE ... WHERE id = ANY(...)`) и вставляет свежие — при полностью пустом `load_log` (первый запуск) выполняется полная первичная загрузка.
+
+Применить схему служебной таблицы (одноразово, только при первом развёртывании):
+
+\`\`\`
+cat sql/05_raw_load_log.sql | docker compose exec -T postgres-dwh psql -U minipay -d minipay_dwh
+\`\`\`
+
+Запуск загрузки:
 
 \`\`\`
 python scripts/load_raw.py
 \`\`\`
-
