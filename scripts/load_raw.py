@@ -25,101 +25,194 @@ dwh_conn = psycopg2.connect(
 oltp_cur = oltp_conn.cursor()
 dwh_cur = dwh_conn.cursor()
 
-# --- users: OLTP -> raw.users ---
+# --- users: OLTP -> raw.users (инкрементально, по updated_at) ---
 
-oltp_cur.execute("""
-    SELECT id, first_name, last_name, phone, city, created_at, status, updated_at
-    FROM users
-""")
+dwh_cur.execute("SELECT last_updated_at FROM raw.load_log WHERE table_name = 'users'")
+last_updated_at = dwh_cur.fetchone()[0]
+
+if last_updated_at is None:
+    oltp_cur.execute("""
+        SELECT id, first_name, last_name, phone, city, created_at, status, updated_at
+        FROM users
+    """)
+else:
+    oltp_cur.execute("""
+        SELECT id, first_name, last_name, phone, city, created_at, status, updated_at
+        FROM users
+        WHERE updated_at > %s
+    """, (last_updated_at,))
+
 rows = oltp_cur.fetchall()
 
-dwh_cur.execute("TRUNCATE raw.users")
+if rows:
+    ids = [row[0] for row in rows]
+    dwh_cur.execute("DELETE FROM raw.users WHERE id = ANY(%s)", (ids,))
 
-execute_values(
-    dwh_cur,
-    "INSERT INTO raw.users (id, first_name, last_name, phone, city, created_at, status, updated_at) VALUES %s",
-    rows
-)
+    execute_values(
+        dwh_cur,
+        "INSERT INTO raw.users (id, first_name, last_name, phone, city, created_at, status, updated_at) VALUES %s",
+        rows
+    )
+
+    max_updated_at = max(row[7] for row in rows)
+    dwh_cur.execute(
+        "UPDATE raw.load_log SET last_updated_at = %s WHERE table_name = 'users'",
+        (max_updated_at,)
+    )
 
 dwh_conn.commit()
 print(f"users: {len(rows)} rows")
 
-# --- cards: OLTP -> raw.cards ---
+# --- cards: OLTP -> raw.cards (инкрементально, по updated_at) ---
 
-oltp_cur.execute("""
-    SELECT id, user_id, last4, exp_month, exp_year, created_at, updated_at, status, card_type
-    FROM cards
-""")
+dwh_cur.execute("SELECT last_updated_at FROM raw.load_log WHERE table_name = 'cards'")
+last_updated_at = dwh_cur.fetchone()[0]
+
+if last_updated_at is None:
+    oltp_cur.execute("""
+        SELECT id, user_id, last4, exp_month, exp_year, created_at, updated_at, status, card_type
+        FROM cards
+    """)
+else:
+    oltp_cur.execute("""
+        SELECT id, user_id, last4, exp_month, exp_year, created_at, updated_at, status, card_type
+        FROM cards
+        WHERE updated_at > %s
+    """, (last_updated_at,))
+
 rows = oltp_cur.fetchall()
 
-dwh_cur.execute("TRUNCATE raw.cards")
+if rows:
+    ids = [row[0] for row in rows]
+    dwh_cur.execute("DELETE FROM raw.cards WHERE id = ANY(%s)", (ids,))
 
-execute_values(
-    dwh_cur,
-    "INSERT INTO raw.cards (id, user_id, last4, exp_month, exp_year, created_at, updated_at, status, card_type) VALUES %s",
-    rows
-)
+    execute_values(
+        dwh_cur,
+        "INSERT INTO raw.cards (id, user_id, last4, exp_month, exp_year, created_at, updated_at, status, card_type) VALUES %s",
+        rows
+    )
+
+    max_updated_at = max(row[6] for row in rows)
+    dwh_cur.execute(
+        "UPDATE raw.load_log SET last_updated_at = %s WHERE table_name = 'cards'",
+        (max_updated_at,)
+    )
 
 dwh_conn.commit()
 print(f"cards: {len(rows)} rows")
 
-# --- merchants: OLTP -> raw.merchants ---
+# --- merchants: OLTP -> raw.merchants (инкрементально, по updated_at) ---
 
-oltp_cur.execute("""
-    SELECT id, legal_name, displayed_name, inn, city, created_at, updated_at, status
-    FROM merchants
-""")
+dwh_cur.execute("SELECT last_updated_at FROM raw.load_log WHERE table_name = 'merchants'")
+last_updated_at = dwh_cur.fetchone()[0]
+
+if last_updated_at is None:
+    oltp_cur.execute("""
+        SELECT id, legal_name, displayed_name, inn, city, created_at, updated_at, status
+        FROM merchants
+    """)
+else:
+    oltp_cur.execute("""
+        SELECT id, legal_name, displayed_name, inn, city, created_at, updated_at, status
+        FROM merchants
+        WHERE updated_at > %s
+    """, (last_updated_at,))
+
 rows = oltp_cur.fetchall()
 
-dwh_cur.execute("TRUNCATE raw.merchants")
+if rows:
+    ids = [row[0] for row in rows]
+    dwh_cur.execute("DELETE FROM raw.merchants WHERE id = ANY(%s)", (ids,))
 
-execute_values(
-    dwh_cur,
-    "INSERT INTO raw.merchants (id, legal_name, displayed_name, inn, city, created_at, updated_at, status) VALUES %s",
-    rows
-)
+    execute_values(
+        dwh_cur,
+        "INSERT INTO raw.merchants (id, legal_name, displayed_name, inn, city, created_at, updated_at, status) VALUES %s",
+        rows
+    )
+
+    max_updated_at = max(row[6] for row in rows)
+    dwh_cur.execute(
+        "UPDATE raw.load_log SET last_updated_at = %s WHERE table_name = 'merchants'",
+        (max_updated_at,)
+    )
 
 dwh_conn.commit()
 print(f"merchants: {len(rows)} rows")
 
-# --- transactions: OLTP -> raw.transactions ---
+# --- transactions: OLTP -> raw.transactions (инкрементально, по updated_at) ---
 
-oltp_cur.execute("""
-    SELECT id, sender_card_id, receiver_card_id, merchant_id, amount, currency,
-           operation_type, channel, status, created_at, updated_at
-    FROM transactions
-""")
+dwh_cur.execute("SELECT last_updated_at FROM raw.load_log WHERE table_name = 'transactions'")
+last_updated_at = dwh_cur.fetchone()[0]
+
+if last_updated_at is None:
+    oltp_cur.execute("""
+        SELECT id, sender_card_id, receiver_card_id, merchant_id, amount, currency,
+               operation_type, channel, status, created_at, updated_at
+        FROM transactions
+    """)
+else:
+    oltp_cur.execute("""
+        SELECT id, sender_card_id, receiver_card_id, merchant_id, amount, currency,
+               operation_type, channel, status, created_at, updated_at
+        FROM transactions
+        WHERE updated_at > %s
+    """, (last_updated_at,))
+
 rows = oltp_cur.fetchall()
 
-dwh_cur.execute("TRUNCATE raw.transactions")
+if rows:
+    ids = [row[0] for row in rows]
+    dwh_cur.execute("DELETE FROM raw.transactions WHERE id = ANY(%s)", (ids,))
 
-execute_values(
-    dwh_cur,
-    """INSERT INTO raw.transactions
-       (id, sender_card_id, receiver_card_id, merchant_id, amount, currency,
-        operation_type, channel, status, created_at, updated_at)
-       VALUES %s""",
-    rows
-)
+    execute_values(
+        dwh_cur,
+        """INSERT INTO raw.transactions
+           (id, sender_card_id, receiver_card_id, merchant_id, amount, currency,
+            operation_type, channel, status, created_at, updated_at)
+           VALUES %s""",
+        rows
+    )
+
+    max_updated_at = max(row[10] for row in rows)
+    dwh_cur.execute(
+        "UPDATE raw.load_log SET last_updated_at = %s WHERE table_name = 'transactions'",
+        (max_updated_at,)
+    )
 
 dwh_conn.commit()
 print(f"transactions: {len(rows)} rows")
 
-# --- transaction_status_history: OLTP -> raw.transaction_status_history ---
+# --- transaction_status_history: OLTP -> raw.transaction_status_history (инкрементально, по id, append-only) ---
 
-oltp_cur.execute("""
-    SELECT id, transaction_id, status, changed_at
-    FROM transaction_status_history
-""")
+dwh_cur.execute("SELECT last_id FROM raw.load_log WHERE table_name = 'transaction_status_history'")
+last_id = dwh_cur.fetchone()[0]
+
+if last_id is None:
+    oltp_cur.execute("""
+        SELECT id, transaction_id, status, changed_at
+        FROM transaction_status_history
+    """)
+else:
+    oltp_cur.execute("""
+        SELECT id, transaction_id, status, changed_at
+        FROM transaction_status_history
+        WHERE id > %s
+    """, (last_id,))
+
 rows = oltp_cur.fetchall()
 
-dwh_cur.execute("TRUNCATE raw.transaction_status_history")
+if rows:
+    execute_values(
+        dwh_cur,
+        "INSERT INTO raw.transaction_status_history (id, transaction_id, status, changed_at) VALUES %s",
+        rows
+    )
 
-execute_values(
-    dwh_cur,
-    "INSERT INTO raw.transaction_status_history (id, transaction_id, status, changed_at) VALUES %s",
-    rows
-)
+    max_id = max(row[0] for row in rows)
+    dwh_cur.execute(
+        "UPDATE raw.load_log SET last_id = %s WHERE table_name = 'transaction_status_history'",
+        (max_id,)
+    )
 
 dwh_conn.commit()
 print(f"transaction_status_history: {len(rows)} rows")
@@ -131,4 +224,4 @@ oltp_conn.close()
 dwh_cur.close()
 dwh_conn.close()
 
-print("Готово: все таблицы скопированы в raw.")
+print("Готово: инкрементальная загрузка в raw завершена.")
