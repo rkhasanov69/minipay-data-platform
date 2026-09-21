@@ -13,3 +13,6 @@ venv/
 
 # Secrets / env
 .env
+
+# Backups
+backups/
