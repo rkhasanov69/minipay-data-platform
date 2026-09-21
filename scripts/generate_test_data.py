@@ -93,7 +93,14 @@ for user in users:
 conn.commit()
 print(f"Inserted {len(users)} users")
 
-cur.execute("SELECT id FROM users")
+cur.execute(
+	"""
+	SELECT u.id
+	FROM users u
+	LEFT JOIN cards c ON u.id = c.user_id
+	WHERE c.id IS NULL;
+	"""
+)
 
 user_ids = []
 for row in cur.fetchall():
