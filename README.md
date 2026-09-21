@@ -14,7 +14,7 @@
 
 ## Статус
 
-В процессе разработки.
+В процессе разработки. Уже реализовано: OLTP-источник, генерация тестовых данных, raw-слой в отдельном DWH с инкрементальной загрузкой, регулярный запуск генераторов по cron и ежедневные бекапы. Дальше: оркестрация (Airflow), dbt, аналитические витрины, BI.
 
 
 ## Docker
@@ -27,17 +27,21 @@
 
 Обязательно проверь сети машины и убедись, что диапазоны выше ничего не пересекают:
 
-    ip addr
-    ip route
+```bash
+ip addr
+ip route
+```
 
 Если пересечение есть — поменяй значения `bip` и `default-address-pools` внутри
 `scripts/setup-docker.sh` до запуска.
 
 ### Запуск
 
-    chmod +x scripts/setup-docker.sh
-    tmux new -s docker-setup
-    ./scripts/setup-docker.sh
+```bash
+chmod +x scripts/setup-docker.sh
+tmux new -s docker-setup
+./scripts/setup-docker.sh
+```
 
 Запуск через `tmux` — не опционально: если во время установки Docker поднимется на
 дефолтном диапазоне, конфликтующем с VPN, и SSH оборвётся, скрипт продолжит работать
@@ -45,27 +49,39 @@
 
 После завершения — перелогинься по SSH (чтобы применилась группа `docker`) и проверь:
 
-    groups
-    docker run hello-world
+```bash
+groups
+docker run hello-world
+```
+
 
 ## PostgreSQL (docker-compose)
 
-`compose.yaml` поднимает PostgreSQL для OLTP-источника данных MiniPay.
+`compose.yaml` поднимает два контейнера PostgreSQL: `postgres-oltp` (источник данных MiniPay, порт `5432`) и `postgres-dwh` (хранилище, порт `5433`, см. раздел про DWH ниже).
 
 ### Перед первым запуском на новой машине
 
 `.env` в git не входит (см. `.gitignore`) — создай его вручную рядом с `compose.yaml`:
 
-    POSTGRES_PASSWORD=<свой пароль>
+```
+POSTGRES_PASSWORD=<свой пароль>
+DWH_POSTGRES_PASSWORD=<свой пароль>
+```
+
+Первая переменная — пароль OLTP-базы, вторая — пароль контейнера `postgres-dwh`.
 
 ### Запуск
 
-    docker compose up -d
-    docker compose ps
+```bash
+docker compose up -d
+docker compose ps
+```
 
 ### Проверка
 
-    docker compose exec postgres-oltp psql -U minipay -d minipay_oltp
+```bash
+docker compose exec postgres-oltp psql -U minipay -d minipay_oltp
+```
 
 
 ## OLTP-схема (PostgreSQL)
@@ -86,33 +102,41 @@ cat sql/03_backfill_transaction_status_history.sql | docker compose exec -T post
 
 Скрипты безопасно перезапускать повторно (используют `CREATE TABLE IF NOT EXISTS` и обёрнуты в транзакцию `BEGIN`/`COMMIT`). При появлении новых таблиц в будущем достаточно будет применить только новые файлы с большим номером.
 
+Файлы `sql/04_*` и `sql/05_*` относятся к хранилищу (DWH), они описаны в разделе про DWH ниже.
+
 
 ## Тестовые данные (Python)
 
 Генерация тестовых данных для MiniPay разбита на несколько скриптов в `scripts/`:
 
 - `scripts/seed_merchants.py` — одноразовый сид справочника мерчантов (курируемый список реальных узбекских брендов). Запускается вручную, когда нужно докинуть мерчантов — не входит в регулярный прогон.
-- `scripts/generate_test_data.py` — регулярная генерация: `users` (Faker, локаль `uz_UZ`, имя/фамилия согласованы по полу, телефон в формате `998XXXXXXXXX`, город — из списка крупных городов Узбекистана, статус — 90% `active`) и `cards` (1-3 карты на каждого пользователя, тип карты и статус — с реалистичными весами).
-- `scripts/generate_transactions.py` — независимая генерация `transactions` поверх уже существующих активных карт и мерчантов (сам ничего не создаёт в `users`/`cards`/`merchants`, только читает их id), плюс сразу пишет соответствующую историю в `transaction_status_history` (каждая транзакция стартует с `pending`, и если финальный статус другой — добавляется вторая запись).
+- `scripts/generate_test_data.py` — регулярная генерация: `users` (Faker, локаль `uz_UZ`, имя/фамилия согласованы по полу, телефон в формате `998XXXXXXXXX`, город — из списка крупных городов Узбекистана, статус — 90% `active`) и `cards` (1-3 карты каждому пользователю, у которого ещё нет ни одной карты — поэтому карты старых пользователей при повторных запусках не растут; тип карты и статус — с реалистичными весами). За один запуск создаётся 10 новых пользователей.
+- `scripts/generate_transactions.py` — независимая генерация `transactions` (100 за запуск) поверх уже существующих активных карт и мерчантов (сам ничего не создаёт в `users`/`cards`/`merchants`, только читает их id), плюс сразу пишет соответствующую историю в `transaction_status_history` (каждая транзакция стартует с `pending`, и если финальный статус другой — добавляется вторая запись).
+
+Регулярный запуск генераторов по расписанию описан в разделе «Расписание и бекапы (cron)» ниже.
 
 ### Перед первым запуском на новой машине
 
 Нужно Python-окружение (venv) с зависимостями из `requirements.txt`.
 `scripts/setup-python-env.sh` идемпотентен: ставит системный пакет `python3.12-venv`, если его ещё нет, создаёт `venv/` (если его ещё нет), ставит зависимости, и добавляет alias `activate-mp` в `~/.bashrc` (если его там ещё нет) — быстрая активация venv из любого места одной командой.
 
-    chmod +x scripts/setup-python-env.sh
-    ./scripts/setup-python-env.sh
+```bash
+chmod +x scripts/setup-python-env.sh
+./scripts/setup-python-env.sh
+```
 
 После первого запуска скрипта на машине — один раз выполни `source ~/.bashrc` (или открой новый терминал), чтобы текущий шелл подхватил новый alias. Дальше на этой машине `activate-mp` работает сразу в любом новом терминале, без дополнительных действий.
 
 `.env` с `POSTGRES_PASSWORD` должен уже существовать (см. раздел PostgreSQL выше) — все генераторы используют его для подключения к базе.
 
-### Запуск
+### Запуск вручную
 
-    activate-mp
-    python3 scripts/seed_merchants.py       # один раз, при необходимости
-    python3 scripts/generate_test_data.py   # users + cards
-    python3 scripts/generate_transactions.py
+```bash
+activate-mp
+python3 scripts/seed_merchants.py       # один раз, при необходимости
+python3 scripts/generate_test_data.py   # users + cards
+python3 scripts/generate_transactions.py
+```
 
 
 ## DWH и raw-слой (PostgreSQL)
@@ -123,26 +147,82 @@ cat sql/03_backfill_transaction_status_history.sql | docker compose exec -T post
 
 Применить схему:
 
-\`\`\`
+```bash
 cat sql/04_dwh_raw_schema.sql | docker compose exec -T postgres-dwh psql -U minipay -d minipay_dwh
-\`\`\`
+```
 
 Проверить результат:
 
-\`\`\`
+```bash
 docker compose exec postgres-dwh psql -U minipay -d minipay_dwh -c "\dt raw.*"
-\`\`\`
+```
 
 Extract-Load: копирование данных из OLTP в raw. Загрузка инкрементальная — точка отсчёта на каждую таблицу хранится в служебной таблице `raw.load_log` (по `updated_at` для `users`/`cards`/`merchants`/`transactions`, по `id` для append-only `transaction_status_history`). При каждом запуске скрипт забирает из OLTP только новые/изменившиеся строки, удаляет их прежние версии из raw (`DELETE ... WHERE id = ANY(...)`) и вставляет свежие — при полностью пустом `load_log` (первый запуск) выполняется полная первичная загрузка.
 
 Применить схему служебной таблицы (одноразово, только при первом развёртывании):
 
-\`\`\`
+```bash
 cat sql/05_raw_load_log.sql | docker compose exec -T postgres-dwh psql -U minipay -d minipay_dwh
-\`\`\`
+```
 
 Запуск загрузки:
 
-\`\`\`
+```bash
+activate-mp
 python scripts/load_raw.py
-\`\`\`
+```
+
+
+## Расписание и бекапы (cron)
+
+Регулярные задачи запускаются через cron — на каждой машине независимо. Важно: **crontab не хранится в git**, он живёт на самой машине под конкретным пользователем, поэтому актуальный список задач записан здесь. При любом изменении расписания обновляй этот раздел.
+
+Время в crontab — серверное (UTC), а не местное.
+
+| Задача | Расписание | Что запускает | Лог |
+|---|---|---|---|
+| Бекап OLTP и DWH | ежедневно, 03:00 | `scripts/backup_db.sh` | `backups/backup.log` |
+| Новые пользователи и карты | каждые 3 часа, в :05 | `scripts/run_generator.sh generate_test_data.py` | `logs/generators.log` |
+| Новые транзакции | каждый час, в :15 | `scripts/run_generator.sh generate_transactions.py` | `logs/generators.log` |
+
+Обе машины (рабочая и домашняя) генерируют данные независимо, поэтому содержимое баз на них со временем расходится — это осознанное решение, данные синтетические.
+
+### Бекап
+
+`scripts/backup_db.sh` делает полный дамп (схема + данные, формат custom) обеих баз — `minipay_oltp` и `minipay_dwh` — прямо из контейнеров (`pg_dump -Fc`) и кладёт в `backups/` файлы вида `minipay_oltp_2026-09-21.dump`. Дампы старше 7 суток удаляются, но только если оба новых дампа успешно созданы. Папка `backups/` в `.gitignore`.
+
+Проверка, что бекап пригоден к восстановлению (во временную базу, рабочую не трогаем):
+
+```bash
+docker compose exec -T postgres-oltp createdb -U minipay restore_test
+cat backups/minipay_oltp_<дата>.dump | docker compose exec -T postgres-oltp pg_restore -U minipay -d restore_test
+docker compose exec -T postgres-oltp psql -U minipay -d restore_test -c "SELECT count(*) FROM transactions;"
+docker compose exec -T postgres-oltp dropdb -U minipay restore_test
+```
+
+### Запуск скриптов через обёртку
+
+`scripts/run_generator.sh <имя_скрипта.py>` запускает один Python-скрипт из `scripts/` через `venv/bin/python` (без ручной активации окружения) и пишет в вывод время начала и окончания — так удобно читать лог. Перед запуском сам переходит в корень репозитория, поэтому работает из любой папки.
+
+### Настройка на новой машине
+
+Предварительно: репозиторий склонирован, контейнеры подняты, venv создан (`scripts/setup-python-env.sh`).
+
+```bash
+mkdir -p logs
+./scripts/backup_db.sh                                  # проверка руками
+./scripts/run_generator.sh generate_test_data.py        # проверка руками
+./scripts/run_generator.sh generate_transactions.py     # проверка руками
+pwd                                                     # запомнить путь к репозиторию
+crontab -e
+```
+
+В crontab добавить три строки, подставив вместо `<ПУТЬ>` путь из `pwd`:
+
+```
+0 3 * * * <ПУТЬ>/scripts/backup_db.sh >> <ПУТЬ>/backups/backup.log 2>&1
+5 */3 * * * <ПУТЬ>/scripts/run_generator.sh generate_test_data.py >> <ПУТЬ>/logs/generators.log 2>&1
+15 * * * * <ПУТЬ>/scripts/run_generator.sh generate_transactions.py >> <ПУТЬ>/logs/generators.log 2>&1
+```
+
+Проверить: `crontab -l`. Папка `logs/` должна существовать заранее — иначе cron не сможет открыть лог и задача молча не запустится.
