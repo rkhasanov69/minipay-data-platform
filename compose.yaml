@@ -1,6 +1,7 @@
 services:
   postgres-oltp:
     image: postgres:17
+    restart: unless-stopped
     environment:
       POSTGRES_USER: minipay
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -12,6 +13,7 @@ services:
 
   postgres-dwh:
     image: postgres:17
+    restart: unless-stopped
     environment:
       POSTGRES_USER: minipay
       POSTGRES_PASSWORD: ${DWH_POSTGRES_PASSWORD}
