@@ -1,0 +1,7 @@
+\set ON_ERROR_STOP on
+
+BEGIN;
+
+ALTER TABLE raw.load_log DROP COLUMN IF EXISTS last_id;
+
+COMMIT;

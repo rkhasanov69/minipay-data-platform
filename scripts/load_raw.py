@@ -2,9 +2,11 @@ import os
 
 import psycopg2
 from psycopg2.extras import execute_values
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
+LOOKBACK = timedelta(minutes=10)
 
 oltp_conn = psycopg2.connect(
     host="localhost",
@@ -40,7 +42,7 @@ else:
         SELECT id, first_name, last_name, phone, city, created_at, status, updated_at
         FROM users
         WHERE updated_at > %s
-    """, (last_updated_at,))
+    """, (last_updated_at - LOOKBACK,))
 
 rows = oltp_cur.fetchall()
 
@@ -78,7 +80,7 @@ else:
         SELECT id, user_id, last4, exp_month, exp_year, created_at, updated_at, status, card_type
         FROM cards
         WHERE updated_at > %s
-    """, (last_updated_at,))
+    """, (last_updated_at - LOOKBACK,))
 
 rows = oltp_cur.fetchall()
 
@@ -116,7 +118,7 @@ else:
         SELECT id, legal_name, displayed_name, inn, city, created_at, updated_at, status
         FROM merchants
         WHERE updated_at > %s
-    """, (last_updated_at,))
+    """, (last_updated_at - LOOKBACK,))
 
 rows = oltp_cur.fetchall()
 
@@ -156,7 +158,7 @@ else:
                operation_type, channel, status, created_at, updated_at
         FROM transactions
         WHERE updated_at > %s
-    """, (last_updated_at,))
+    """, (last_updated_at - LOOKBACK,))
 
 rows = oltp_cur.fetchall()
 
@@ -182,12 +184,12 @@ if rows:
 dwh_conn.commit()
 print(f"transactions: {len(rows)} rows")
 
-# --- transaction_status_history: OLTP -> raw.transaction_status_history (инкрементально, по id, append-only) ---
+# --- transaction_status_history: OLTP -> raw.transaction_status_history (инкрементально, по changed_at, append-only) ---
 
-dwh_cur.execute("SELECT last_id FROM raw.load_log WHERE table_name = 'transaction_status_history'")
-last_id = dwh_cur.fetchone()[0]
+dwh_cur.execute("SELECT last_updated_at FROM raw.load_log WHERE table_name = 'transaction_status_history'")
+last_updated_at = dwh_cur.fetchone()[0]
 
-if last_id is None:
+if last_updated_at is None:
     oltp_cur.execute("""
         SELECT id, transaction_id, status, changed_at
         FROM transaction_status_history
@@ -196,22 +198,25 @@ else:
     oltp_cur.execute("""
         SELECT id, transaction_id, status, changed_at
         FROM transaction_status_history
-        WHERE id > %s
-    """, (last_id,))
+        WHERE changed_at > %s
+    """, (last_updated_at - LOOKBACK,))
 
 rows = oltp_cur.fetchall()
 
 if rows:
+    ids = [row[0] for row in rows]
+    dwh_cur.execute("DELETE FROM raw.transaction_status_history WHERE id = ANY(%s)", (ids,))
+
     execute_values(
         dwh_cur,
         "INSERT INTO raw.transaction_status_history (id, transaction_id, status, changed_at) VALUES %s",
         rows
     )
 
-    max_id = max(row[0] for row in rows)
+    max_updated_at = max(row[3] for row in rows)
     dwh_cur.execute(
-        "UPDATE raw.load_log SET last_id = %s WHERE table_name = 'transaction_status_history'",
-        (max_id,)
+        "UPDATE raw.load_log SET last_updated_at = %s WHERE table_name = 'transaction_status_history'",
+        (max_updated_at,)
     )
 
 dwh_conn.commit()
