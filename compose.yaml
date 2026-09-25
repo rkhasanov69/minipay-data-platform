@@ -18,7 +18,8 @@ x-airflow-common: &airflow-common
     - ./dags:/opt/airflow/dags
     - ./scripts:/opt/airflow/scripts
   depends_on:
-    - postgres-airflow
+    postgres-airflow:
+      condition: service_healthy
 
 services:
   postgres-oltp:
@@ -54,6 +55,11 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres-airflow-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   airflow-init:
     <<: *airflow-common
@@ -68,7 +74,7 @@ services:
     command: scheduler
     depends_on:
       postgres-airflow:
-        condition: service_started
+        condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
 
