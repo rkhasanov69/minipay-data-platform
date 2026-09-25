@@ -9,16 +9,16 @@ load_dotenv()
 LOOKBACK = timedelta(minutes=10)
 
 oltp_conn = psycopg2.connect(
-    host="localhost",
-    port=5432,
+    host=os.getenv("OLTP_HOST", "localhost"),
+    port=os.getenv("OLTP_PORT", "5432"),
     dbname="minipay_oltp",
     user="minipay",
     password=os.getenv("POSTGRES_PASSWORD"),
 )
 
 dwh_conn = psycopg2.connect(
-    host="localhost",
-    port=5433,
+    host=os.getenv("DWH_HOST", "localhost"),
+    port=os.getenv("DWH_PORT", "5433"),
     dbname="minipay_dwh",
     user="minipay",
     password=os.getenv("DWH_POSTGRES_PASSWORD"),
