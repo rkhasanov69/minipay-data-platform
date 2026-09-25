@@ -232,3 +232,59 @@ crontab -e
 ```
 
 Проверить: `crontab -l`. Папка `logs/` должна существовать заранее — иначе cron не сможет открыть лог и задача молча не запустится.
+
+## Оркестрация (Airflow)
+
+Для регулярного запуска `load_raw.py` используется Apache Airflow 2.10.5 (slim-образ), поднятый через тот же `docker-compose` вместе с остальной инфраструктурой.
+
+### Компоненты
+
+- **postgres-airflow** — отдельная PostgreSQL-база для служебных (metadata) данных Airflow: история запусков, статусы задач, пользователи веб-интерфейса. Не путать с `postgres-dwh`. Порт наружу не публикуется — доступна только внутри docker-сети.
+- **airflow-init** — разовая инициализация: создаёт схему в metadata-базе и первого администратора веб-интерфейса. Запускается один раз, не является постоянным сервисом.
+- **airflow-scheduler** — основной постоянный процесс: следит за расписанием DAG-ов и исполняет задачи (executor — `LocalExecutor`, локальные параллельные процессы без внешних зависимостей типа Celery/Redis).
+- **airflow-webserver** — веб-интерфейс (порт 8080). Поднимается **по требованию**, не постоянно, через профиль `ui` — чтобы не расходовать память впустую на серверах с её нехваткой.
+
+### Собственный образ
+
+Используется slim-образ Airflow (`apache/airflow:slim-2.10.5-python3.9`) — без лишних предустановленных провайдеров. Поверх него собирается свой образ (см. `Dockerfile`) с доустановкой:
+
+- `apache-airflow-providers-postgres` — драйвер для подключения к своей же metadata-базе;
+- `psycopg2-binary`, `python-dotenv` — зависимости самого `scripts/load_raw.py`, который запускается внутри контейнера.
+
+### Переменные окружения (`.env`)
+
+Дополнительно к уже описанным выше нужны:
+
+AIRFLOW_POSTGRES_PASSWORD=<пароль для metadata-базы Airflow>
+AIRFLOW_FERNET_KEY=<ключ шифрования Airflow>
+
+
+Fernet-ключ должен быть одинаковым для `airflow-init`/`airflow-scheduler`/`airflow-webserver` (задаётся один раз через общий блок `x-airflow-common` в `compose.yaml`), но **не обязан совпадать** между разными окружениями (рабочий/домашний сервер) — у каждого своя независимая metadata-база. Генерируется так:
+
+```bash
+docker run --rm apache/airflow:slim-2.10.5-python3.9 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+### Подключение load_raw.py
+
+Внутри контейнеров Airflow скрипт подключается к базам не через `localhost` (как при запуске через cron на хосте), а по именам сервисов в docker-сети. Это задаётся переменными окружения в `x-airflow-common` (`OLTP_HOST`, `OLTP_PORT`, `DWH_HOST`, `DWH_PORT`) — сам скрипт при их отсутствии по умолчанию падает обратно на `localhost` и старые порты, так что для запуска через cron ничего менять не пришлось.
+
+### Первый запуск / развёртывание на новом сервере
+
+```bash
+mkdir -p dags   # git не хранит пустые папки, создаётся руками
+docker compose up --build airflow-init
+docker compose up -d --build airflow-scheduler
+```
+
+Поднять веб-интерфейс (по требованию):
+
+```bash
+docker compose --profile ui up -d airflow-webserver
+```
+
+Остановить:
+
+```bash
+docker compose stop airflow-webserver
+```
