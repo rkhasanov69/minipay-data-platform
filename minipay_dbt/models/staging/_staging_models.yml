@@ -1,0 +1,112 @@
+models:
+  - name: stg_users
+    columns:
+      - name: user_id
+        data_tests:
+          - unique
+          - not_null
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'blocked', 'restricted', 'deceased']
+
+  - name: stg_cards
+    columns:
+      - name: card_id
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: user_id
+      - name: card_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['visa', 'mastercard', 'humo', 'uzcard']
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'blocked']
+
+  - name: stg_merchants
+    columns:
+      - name: merchant_id
+        data_tests:
+          - unique
+          - not_null
+      - name: inn
+        data_tests:
+          - unique
+          - not_null
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'suspended']
+
+  - name: stg_transactions
+    columns:
+      - name: transaction_id
+        data_tests:
+          - unique
+          - not_null
+      - name: sender_card_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cards')
+                field: card_id
+      - name: receiver_card_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_cards')
+                field: card_id
+      - name: merchant_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_merchants')
+                field: merchant_id
+      - name: operation_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['transfer', 'payment']
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['in_app', 'qr', 'terminal']
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['pending', 'success', 'failure']
+
+  - name: stg_transaction_status_history
+    columns:
+      - name: status_history_id
+        data_tests:
+          - unique
+          - not_null
+      - name: transaction_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_transactions')
+                field: transaction_id
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['pending', 'success', 'failure']
