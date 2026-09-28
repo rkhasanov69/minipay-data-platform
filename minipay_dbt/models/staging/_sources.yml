@@ -1,0 +1,9 @@
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: users
+      - name: merchants
+      - name: transactions
+      - name: transaction_status_history
+      - name: cards
