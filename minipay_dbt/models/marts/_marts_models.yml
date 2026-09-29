@@ -1,0 +1,7 @@
+models:
+  - name: mart_merchant_turnover
+    columns:
+      - name: merchant_id
+        data_tests:
+          - unique
+          - not_null
