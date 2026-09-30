@@ -9,6 +9,13 @@ with DAG(
     catchup=False,
 ) as dag:
     load_raw_task = BashOperator(
-    task_id="load_raw",
-    bash_command="python3 /opt/airflow/scripts/load_raw.py",
+        task_id="load_raw",
+        bash_command="python3 /opt/airflow/scripts/load_raw.py",
     )
+
+    dbt_build_task = BashOperator(
+        task_id="dbt_build",
+        bash_command="cd /opt/airflow/minipay_dbt && /home/airflow/dbt-venv/bin/dbt build",
+    )
+
+    load_raw_task >> dbt_build_task

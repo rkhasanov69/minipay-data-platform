@@ -1,0 +1,12 @@
+minipay_dbt:
+  outputs:
+    airflow:
+      type: postgres
+      host: "{{ env_var('DWH_HOST') }}"
+      port: "{{ env_var('DWH_PORT') | int }}"
+      user: minipay
+      pass: "{{ env_var('DWH_POSTGRES_PASSWORD') }}"
+      dbname: minipay_dwh
+      schema: analytics
+      threads: 2
+  target: airflow
