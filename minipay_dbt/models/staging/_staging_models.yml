@@ -1,5 +1,6 @@
 models:
   - name: stg_users
+    description: "Пользователи MiniPay. Копия raw.users, id переименован в user_id"
     columns:
       - name: user_id
         data_tests:
@@ -12,6 +13,7 @@ models:
                 values: ['active', 'blocked', 'restricted', 'deceased']
 
   - name: stg_cards
+    description: "Карты пользователей. Копия raw.cards, id переименован в card_id. Номер карты не хранится, только last4"
     columns:
       - name: card_id
         data_tests:
@@ -36,6 +38,7 @@ models:
                 values: ['active', 'blocked']
 
   - name: stg_merchants
+    description: "Мерчанты (юрлица). Копия raw.merchants, id переименован в merchant_id"
     columns:
       - name: merchant_id
         data_tests:
@@ -52,6 +55,7 @@ models:
                 values: ['active', 'suspended']
 
   - name: stg_transactions
+    description: "Транзакции: переводы карта-карта и оплаты мерчантам. Копия raw.transactions, id переименован в transaction_id. У перевода заполнен receiver_card_id, у оплаты merchant_id"
     columns:
       - name: transaction_id
         data_tests:
@@ -93,6 +97,7 @@ models:
                 values: ['pending', 'success', 'failure']
 
   - name: stg_transaction_status_history
+    description: "Журнал смен статуса транзакций, только добавление строк. Каждая транзакция начинается с pending. Копия raw.transaction_status_history, id переименован в status_history_id"
     columns:
       - name: status_history_id
         data_tests:

@@ -1,7 +1,19 @@
 models:
   - name: mart_merchant_turnover
+    description: "Оборот по мерчантам за всё время. Только успешные оплаты (operation_type = payment, status = success). Одна строка на мерчанта; мерчанты без успешных оплат в витрину не попадают."
     columns:
       - name: merchant_id
+        description: "ID мерчанта"
         data_tests:
           - unique
           - not_null
+      - name: merchant_name
+        description: "Название мерчанта для клиентов (displayed_name)"
+      - name: merchant_city
+        description: "Город регистрации юрлица мерчанта, не город точки продаж"
+      - name: payments_count
+        description: "Количество успешных оплат"
+      - name: turnover
+        description: "Сумма успешных оплат, сум"
+      - name: avg_cheque
+        description: "Средний чек успешной оплаты, сум, округлён до 2 знаков"

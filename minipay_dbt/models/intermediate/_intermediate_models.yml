@@ -1,7 +1,21 @@
 models:
   - name: int_transactions_enriched
+    description: "Все транзакции (переводы и оплаты) с приклеенным контекстом: карта и город отправителя, карта и город получателя, мерчант. Одна строка на транзакцию. Основа для витрин, чтобы джойны не повторялись в каждой из них."
     columns:
       - name: transaction_id
+        description: "ID транзакции"
         data_tests:
           - unique
           - not_null
+      - name: created_at
+        description: "Время создания транзакции в UTC, как хранится в источнике"
+      - name: created_at_local
+        description: "То же время по Ташкенту (Asia/Tashkent, UTC+5). Для отчётов по дням и часам использовать эту колонку, иначе ночные транзакции попадут не в тот день"
+      - name: sender_user_id
+        description: "ID владельца карты отправителя. Заполнен всегда"
+      - name: receiver_user_id
+        description: "ID владельца карты получателя. Заполнен только у переводов (operation_type = transfer), у оплат пустой. То же для receiver_city и receiver_card_type"
+      - name: merchant_id
+        description: "ID мерчанта. Заполнен только у оплат (operation_type = payment), у переводов пустой. То же для merchant_name и merchant_city"
+      - name: merchant_city
+        description: "Город регистрации юрлица мерчанта, не город точки продаж"
