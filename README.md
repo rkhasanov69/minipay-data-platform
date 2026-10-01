@@ -14,8 +14,7 @@
 
 ## Статус
 
-В процессе разработки. Уже реализовано: OLTP-источник, генерация тестовых данных, raw-слой в отдельном DWH с инкрементальной загрузкой, регулярный запуск генераторов по cron и ежедневные бекапы. Дальше: оркестрация (Airflow), dbt, аналитические витрины, BI.
-
+В процессе разработки. Уже реализовано: OLTP-источник, генерация тестовых данных, raw-слой в отдельном DWH с инкрементальной загрузкой, регулярный запуск генераторов по cron и ежедневные бекапы, оркестрация в Airflow, слой трансформаций на dbt (staging → intermediate → marts) с тестами качества данных, которые запускаются из Airflow после каждой загрузки. Дальше: аналитические витрины, BI, мониторинг.
 
 ## Docker
 
@@ -235,7 +234,12 @@ crontab -e
 
 ## Оркестрация (Airflow)
 
-Для регулярного запуска `load_raw.py` используется Apache Airflow 2.10.5 (slim-образ), поднятый через тот же `docker-compose` вместе с остальной инфраструктурой.
+Для регулярного запуска пайплайна используется Apache Airflow 2.10.5 (slim-образ), поднятый через тот же `docker-compose` вместе с остальной инфраструктурой. DAG `load_raw` (`dags/load_raw_dag.py`) запускается раз в час в `:25` (UTC) и состоит из двух задач:
+
+1. `load_raw` — инкрементальная загрузка OLTP → `raw` (`scripts/load_raw.py`);
+2. `dbt_build` — `dbt build` всего проекта: пересборка staging/intermediate/marts и прогон всех тестов. Запускается только после успешного `load_raw` (`load_raw_task >> dbt_build_task`). Если упал хотя бы один тест, задача `dbt_build` становится `failed`.
+
+Время `:25` выбрано с буфером после генератора транзакций (cron, `:15`), чтобы загрузка не читала данные, которые генератор ещё пишет.
 
 ### Компоненты
 
@@ -262,12 +266,12 @@ AIRFLOW_FERNET_KEY=<ключ шифрования Airflow>
 Fernet-ключ должен быть одинаковым для `airflow-init`/`airflow-scheduler`/`airflow-webserver` (задаётся один раз через общий блок `x-airflow-common` в `compose.yaml`), но **не обязан совпадать** между разными окружениями (рабочий/домашний сервер) — у каждого своя независимая metadata-база. Генерируется так:
 
 ```bash
-docker run --rm apache/airflow:slim-2.10.5-python3.9 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+docker run --rm apache/airflow:slim-2.10.5-python3.12 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
 ### Подключение load_raw.py
 
-Внутри контейнеров Airflow скрипт подключается к базам не через `localhost` (как при запуске через cron на хосте), а по именам сервисов в docker-сети. Это задаётся переменными окружения в `x-airflow-common` (`OLTP_HOST`, `OLTP_PORT`, `DWH_HOST`, `DWH_PORT`) — сам скрипт при их отсутствии по умолчанию падает обратно на `localhost` и старые порты, так что для запуска через cron ничего менять не пришлось.
+Внутри контейнеров Airflow скрипт подключается к базам не через `localhost`, а по именам сервисов в docker-сети. Это задаётся переменными окружения в `x-airflow-common` (`OLTP_HOST`, `OLTP_PORT`, `DWH_HOST`, `DWH_PORT`). Без них скрипт по умолчанию подключается к `localhost` и host-портам, поэтому его можно запускать вручную с хоста для отладки. По расписанию `load_raw.py` запускает только Airflow, в cron его нет.
 
 ### Первый запуск / развёртывание на новом сервере
 
@@ -288,3 +292,114 @@ docker compose --profile ui up -d airflow-webserver
 ```bash
 docker compose stop airflow-webserver
 ```
+
+### dbt внутри Airflow
+
+Задача `dbt_build` выполняет:
+
+```bash
+cd /opt/airflow/minipay_dbt && /home/airflow/dbt-venv/bin/dbt build
+```
+
+- Папка `minipay_dbt/` монтируется в контейнер **только для чтения** (`:ro`): Airflow запускает модели, но не может их изменить.
+- Служебные файлы dbt пишутся во временную папку контейнера: `DBT_TARGET_PATH=/tmp/dbt/target`, `DBT_LOG_PATH=/tmp/dbt/logs`.
+- Профиль подключения — `minipay_dbt/profiles/profiles.yml` (путь задан через `DBT_PROFILES_DIR`). Секретов в нём нет: хост, порт и пароль берутся из переменных окружения контейнера через `env_var()` (`DWH_HOST`, `DWH_PORT`, `DWH_POSTGRES_PASSWORD`). Поэтому файл лежит в git и одинаково работает на любом сервере.
+
+Проверка изнутри планировщика:
+
+```bash
+docker compose exec airflow-scheduler bash -c "cd /opt/airflow/minipay_dbt && /home/airflow/dbt-venv/bin/dbt debug"
+```
+
+Ожидаемые «красные» места, это не ошибки:
+
+- `git [ERROR]` в `dbt debug`: в slim-образе нет git. dbt нужен он только для `dbt deps` (сторонние пакеты), а они в проекте не используются;
+- `airflow dags show` падает с `Could not import graphviz`: пакет для отрисовки графа DAG в образ не ставится. Порядок задач можно проверить по времени старта через `airflow tasks states-for-dag-run`.
+
+После изменения `Dockerfile` или общих настроек в `x-airflow-common` планировщик пересобирается и пересоздаётся точечно, не трогая `airflow-init`:
+
+```bash
+docker compose build airflow-scheduler
+docker compose up -d --no-deps airflow-scheduler
+```
+
+
+## dbt (слой трансформаций)
+
+Проект dbt — папка `minipay_dbt/`. dbt превращает сырые копии OLTP из схемы `raw` в аналитические модели внутри той же базы `minipay_dwh` (ELT: трансформации после загрузки).
+
+### Слои
+
+| Слой | Схема | Материализация | Что делает |
+|---|---|---|---|
+| staging | `staging` | view | одна модель на raw-таблицу: переименование ключей (`id` → `user_id` и т.д.), без джойнов и фильтров |
+| intermediate | `intermediate` | view | джойны и общая бизнес-логика (`int_transactions_enriched`) |
+| marts | `marts` | table | готовые витрины для людей и BI (`mart_merchant_turnover`) |
+
+- Источники (`raw.*`) описаны в `models/staging/_sources.yml`. `source()` используется только в staging, остальные слои берут данные через `ref()`.
+- Схемы называются ровно `staging` / `intermediate` / `marts` благодаря макросу `macros/generate_schema_name.sql`. По умолчанию dbt склеил бы их со схемой из профиля: `analytics_staging` и т.д.
+- Тесты: стандартные (`unique`, `not_null`, `accepted_values`, `relationships`) описаны в YAML рядом с моделями и возвращают проверки, сознательно убранные из raw-слоя. Бизнес-правила, затрагивающие несколько колонок, — отдельные SQL-файлы в `tests/`.
+- Описания моделей и колонок — в тех же YAML-файлах. Подробная документация по таблицам — в dbt docs (см. ниже), а не в README.
+
+### Установка на хосте
+
+dbt ставится в общий venv вместе с остальными зависимостями (`requirements.txt`, `scripts/setup-python-env.sh`). Профиль подключения для ручной работы создаётся руками и **в git не хранится**:
+
+```bash
+mkdir -p ~/.dbt
+nano ~/.dbt/profiles.yml
+chmod 600 ~/.dbt/profiles.yml
+```
+
+```yaml
+minipay_dbt:
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5433
+      user: minipay
+      pass: <DWH_POSTGRES_PASSWORD из .env>
+      dbname: minipay_dwh
+      schema: analytics
+      threads: 4
+  target: dev
+```
+
+Проверка: `cd minipay_dbt && dbt debug`.
+
+### Основные команды
+
+Запускаются из папки `minipay_dbt/` с активным venv (`activate-mp`):
+
+```bash
+dbt build                                   # весь проект: модели и тесты по графу
+dbt build --select +mart_merchant_turnover  # витрина и всё, от чего она зависит
+dbt run --select stg_users                  # собрать одну модель
+dbt test --select stg_transactions          # тесты одной модели
+dbt parse                                   # проверить синтаксис без обращения к базе
+```
+
+Если модель удалена, переименована или перенесена в другую схему, dbt **не удаляет** её старый объект из базы. Его нужно удалить вручную (`DROP VIEW` / `DROP TABLE`).
+
+### Документация (dbt docs)
+
+```bash
+dbt docs generate
+dbt docs serve --port 8081
+```
+
+Сервер слушает только `127.0.0.1`, поэтому открывается через SSH-туннель: локальный порт `8081` → сервер → `127.0.0.1:8081`, затем `http://localhost:8081` в браузере.
+
+
+## Алиасы для psql
+
+Для быстрого доступа к базам на каждой машине один раз добавляются в `~/.bashrc`:
+
+```bash
+echo "alias dwh='docker compose -f ~/minipay-data-platform/compose.yaml exec postgres-dwh psql -U minipay -d minipay_dwh'" >> ~/.bashrc
+echo "alias oltp='docker compose -f ~/minipay-data-platform/compose.yaml exec postgres-oltp psql -U minipay -d minipay_oltp'" >> ~/.bashrc
+source ~/.bashrc
+```
+
+Использование: `dwh` — интерактивная сессия, `dwh -c "SELECT ..."` — один запрос.
