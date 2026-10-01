@@ -250,10 +250,14 @@ crontab -e
 
 ### Собственный образ
 
-Используется slim-образ Airflow (`apache/airflow:slim-2.10.5-python3.9`) — без лишних предустановленных провайдеров. Поверх него собирается свой образ (см. `Dockerfile`) с доустановкой:
+Используется slim-образ Airflow (`apache/airflow:slim-2.10.5-python3.12`) — без лишних предустановленных провайдеров. Python 3.12, а не 3.9: dbt-core 1.11+ не поддерживает Python 3.9. Поверх него собирается свой образ (см. `Dockerfile`):
 
-- `apache-airflow-providers-postgres` — драйвер для подключения к своей же metadata-базе;
-- `psycopg2-binary`, `python-dotenv` — зависимости самого `scripts/load_raw.py`, который запускается внутри контейнера.
+- `apache-airflow==2.10.5` — версия самого Airflow закреплена **явно**. Без этого pip при установке провайдера может молча обновить Airflow под свежую версию провайдера. Так и случилось при переходе на Python 3.12: в образ приехал Airflow 3.3.2, и команда `airflow` перестала находиться;
+- `apache-airflow-providers-postgres==6.4.1` — драйвер для подключения к своей же metadata-базе;
+- `psycopg2-binary`, `python-dotenv` — зависимости `scripts/load_raw.py`;
+- **dbt в отдельном venv** (`/home/airflow/dbt-venv`): `dbt-core==1.12.5`, `dbt-postgres==1.11.0`, те же версии, что в `requirements.txt` на хосте. Отдельное окружение нужно, чтобы зависимости dbt и Airflow не конфликтовали.
+
+Все версии в `Dockerfile` закреплены: один и тот же `Dockerfile` должен давать один и тот же образ и сегодня, и через полгода.
 
 ### Переменные окружения (`.env`)
 
