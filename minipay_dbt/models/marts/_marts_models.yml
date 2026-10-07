@@ -17,3 +17,16 @@ models:
         description: "Сумма успешных оплат, сум"
       - name: avg_cheque
         description: "Средний чек успешной оплаты, сум, округлён до 2 знаков"
+
+  - name: dim_merchants
+    description: "Измерение мерчантов. Одна строка = один мерчант, включая приостановленных (suspended): у них есть исторические транзакции."
+    columns:
+      - name: merchant_id
+        data_tests:
+          - unique
+          - not_null
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'suspended']
