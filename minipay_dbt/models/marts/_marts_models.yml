@@ -53,3 +53,15 @@ models:
           - accepted_values:
               arguments:
                 values: ['active', 'restricted', 'blocked', 'deceased']
+  - name: dim_date
+    description: "Календарь. Одна строка = один день. Диапазон фиксированный: 2026-01-01 — 2027-12-31; до конца 2027 года его нужно продлить в dim_date.sql (иначе упадёт тест relationships у факта). Праздники (is_holiday) будут добавлены через seed."
+    columns:
+      - name: date_day
+        description: "Дата (ключ). Факт соединяется по transaction_date = date_day"
+        data_tests:
+          - unique
+          - not_null
+      - name: day_of_week
+        description: "День недели по ISO: 1 = понедельник ... 7 = воскресенье"
+      - name: is_weekend
+        description: "true для субботы и воскресенья"
