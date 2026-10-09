@@ -65,3 +65,7 @@ models:
         description: "День недели по ISO: 1 = понедельник ... 7 = воскресенье"
       - name: is_weekend
         description: "true для субботы и воскресенья"
+      - name: is_holiday
+        description: "Официальный праздник (из seed uz_holidays)"
+      - name: is_day_off
+        description: "Нерабочий день для пятидневки: выходные + праздники + переносы, минус рабочие субботы"
