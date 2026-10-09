@@ -69,3 +69,43 @@ models:
         description: "Официальный праздник (из seed uz_holidays)"
       - name: is_day_off
         description: "Нерабочий день для пятидневки: выходные + праздники + переносы, минус рабочие субботы"
+
+  - name: fct_transactions
+    description: "Факт транзакций. Одна строка = одна транзакция, все статусы (success/failure/pending) — фильтры делаются в витринах. Ключи ведут в dim_cards (отправитель и получатель), dim_merchants и dim_date."
+    columns:
+      - name: transaction_id
+        data_tests:
+          - unique
+          - not_null
+      - name: sender_card_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_cards')
+                field: card_id
+      - name: receiver_card_id
+        description: "Карта получателя; заполнена только у переводов"
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_cards')
+                field: card_id
+      - name: merchant_id
+        description: "Мерчант; заполнен только у оплат"
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_merchants')
+                field: merchant_id
+      - name: transaction_date
+        description: "Дата по Ташкенту (created_at_local::date), ключ в dim_date"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: amount
+        data_tests:
+          - not_null

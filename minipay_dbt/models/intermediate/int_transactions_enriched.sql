@@ -7,6 +7,9 @@ select
     t.created_at,
     t.created_at at time zone 'Asia/Tashkent' as created_at_local,
 
+    t.sender_card_id,
+    t.receiver_card_id,
+
     sender_card.user_id as sender_user_id,
     sender_user.city as sender_city,
     sender_card.card_type as sender_card_type,
