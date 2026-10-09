@@ -109,3 +109,11 @@ models:
       - name: amount
         data_tests:
           - not_null
+
+  - name: mart_daily_turnover
+    description: "Оборот по дням транзакций и оплат мерчантам, показаны только успешные операции, в случае отсутствия показывается 0, время всех операций по Ташкенту"
+    columns:
+      - name: date_day
+        data_tests:
+          - unique
+          - not_null
